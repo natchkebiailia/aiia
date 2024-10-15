@@ -41,6 +41,67 @@ def write_output(filename, tokens):
     with open(filename, "w", encoding="utf-8") as file:
         file.write(str(tokens))
 
+class Node:
+    def __init__(self,value, children=None):
+            self.value = value
+            self.children = children if children else []
+
+    def __repr__(self):
+        return f'Node({self.value}, {self.children})'
+
+def parse(tokens):
+    tokens = tokens.copy()
+    position = [0]
+
+    def current_token():
+        if position[0] < len(tokens):
+            return tokens[position[0]]
+        else:
+            return None
+
+    def consume(expected_type=None, expected_value=None):
+        token = current_token()
+        if token is None:
+            return None
+        if expected_type and token[0] != expected_type:
+           return None
+        if expected_value and token[1] != expected_value:
+           return None
+        position[0] += 1
+        return token
+
+    def parse_statement():
+        token = current_token()
+        if token is None:
+            return None
+
+        #variable declaration
+        if token[0] == 'KEYWORD' and token[1] == 'აი':
+            consume('KEYWORD','აი')
+            identifier = consume('IDENTIFIER')
+            consume('ASSIGNMENT','=')
+            expr = parse_expression()
+            consume('SEMICOLON',';')
+            return Node('Declaration',[identifier, expr])
+
+
+
+    def parse_expression():
+        token = consume()
+        return Node(token[1])
+
+        
+
+    #print(tokens)
+    root = Node("PROGRAM")
+    while position[0] < len(tokens):
+        stmnt = parse_statement()
+        if stmnt:
+            root.children.append(stmnt)
+    return root
+        
+
+
 # მთავარი ფუნქცია
 def main():
     if len(sys.argv) < 2:
@@ -48,10 +109,17 @@ def main():
         return
     input_filename = sys.argv[1]
     content = read_file(input_filename)
-    output = lexical_analyse(content)
-    output_filename = input_filename + ".შედეგი"
-    write_output(output_filename, output)
-    print(f"შედეგი ჩაწერილია ფაილში: {output_filename}")
+
+
+    tokens = lexical_analyse(content)
+    ast = parse(tokens)
+
+
+    print(ast)
+    #output = ''
+    #output_filename = input_filename + ".შედეგი"
+    #write_output(output_filename, output)
+    #print(f"შედეგი ჩაწერილია ფაილში: {output_filename}")
 
 # პროგრამის საწყისი
 if __name__ == "__main__":
