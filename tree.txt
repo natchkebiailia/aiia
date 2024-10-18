@@ -1,0 +1,11 @@
+Node(Program, [
+    Node(Declaration, [('IDENTIFIER', 'ი'), Node(37, [])]),
+    Node(Assignment, [('IDENTIFIER', 'ი'), Node(65, [])]),
+    Node(Declaration, [('IDENTIFIER', 'ა'), Node(42, [])]),
+    Node(Declaration, [('IDENTIFIER', 'ჭ'),
+        Node(+, [
+            Node(58, []),
+            Node(681, [])
+        ])
+    ])
+])

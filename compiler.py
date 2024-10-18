@@ -68,6 +68,7 @@ def parse(tokens):
         if expected_value and token[1] != expected_value:
            return None
         position[0] += 1
+        print(position[0])
         return token
 
     def parse_statement():
@@ -84,16 +85,60 @@ def parse(tokens):
             consume('SEMICOLON',';')
             return Node('Declaration',[identifier, expr])
 
+        # Assignment
+        if token[0] == 'IDENTIFIER':
+            identifier = consume('IDENTIFIER')
+            consume('ASSIGNMENT','=')
+            expr = parse_expression()
+            consume('SEMICOLON',';')
+            return Node('Assignment',[identifier, expr])
 
+        consume()
+        return Node('Unknown',[])
+            
+    def parse_factor():
+        token = current_token()
+        if token[0] in ('NUMBER','IDENTIFIER'):
+            consume()
+            return Node(token[1])
+        elif token[0] == "BRACKET" and token[1] == "(":
+                consume("BRACKET","(")
+                node = parse_expression()
+                consume("BRACKET",")")
+                return node
+        else:
+            return None
+        
+        
+    def parse_term():
+        node = parse_factor()
+        while True:
+            token = current_token()
+            if token and token[0] == "OPERATOR" and token[1] in ("*","/"):
+                consume()
+                right = parse_factor()
+                node = Node(token[1],[node,right])
+            else:
+                break
+        return node
+    
 
     def parse_expression():
-        token = consume()
-        return Node(token[1])
+        node = parse_term()
+        while True:
+            token = current_token()
+            if token and token[0] == "OPERATOR" and token[1] in ("+","-"):
+                consume()
+                right = parse_term()
+                node = Node(token[1],[node,right])
+            else:
+                break
+        return node
 
         
 
-    #print(tokens)
-    root = Node("PROGRAM")
+    print(tokens)
+    root = Node("Program")
     while position[0] < len(tokens):
         stmnt = parse_statement()
         if stmnt:
