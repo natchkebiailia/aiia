@@ -1,174 +1,167 @@
 import sys
 import re
 
-# ტოკენების შაბლონები, რომლებიც განსაზღვრავენ თუ როგორ უნდა ამოვიცნოთ თითოეული ტიპის token
-TOKEN_PATTERNS = [
-    ('COMMENT',     r'//.*'),                      # ერთ-ხაზიანი კომენტარი
-    ('NUMBER',      r'\d+'),                       # მთელი რიცხვი
-    ('KEYWORD',     r'\b(თუ|თუარა|აი|დაბეჭდე)\b'), # რეზერვირებული სიტყვები
-    ('IDENTIFIER',  r'[_\u10A0-\u10FF][_\u10A0-\u10FF0-9]*'),    # იდენტიფიკატორები
-    ('COMPARISON',  r'==|!=|<=|>=|<|>'),          # შედარების ოპერატორები
-    ('ASSIGNMENT',  r'='),                        # მინიჭების ოპერატორი
-    ('OPERATOR',    r'[+\-*/]'),                  # არითმეტიკული ოპერატორები
-    ('BRACKET',     r'[(){}]'),                   # ფრჩხილები (მრგვალი და ფიგურული)
-    ('SEMICOLON',   r';'),                        # წერტილმძიმე
-    ('WHITESPACE',  r'\s+'),                      # თეთრი სივრცე
-]
-
-# რეგულარული გამოხატვის აწყობა, რომელიც შეადგენს ყველა token-ის შაბლონს
-token_regex = '|'.join(f'(?P<{pair[0]}>{pair[1]})' for pair in TOKEN_PATTERNS)
-
-# ფუნქცია ლექსიკური ანალიზის შესასრულებლად
-def lexical_analyse(code):
-    tokens = []
-    # regEx-იდთ კოდის თითოეული token-ის მოძიება
-    for match in re.finditer(token_regex, code):
-        kind = match.lastgroup
-        value = match.group(kind)
-        # გამოტოვება თეთრი სივრცის და კომენტარების
-        if kind == 'WHITESPACE' or kind == 'COMMENT':
-            continue
-        tokens.append((kind, value))
-    return tokens
-
-# ფაილის წაკითხვის ფუნქცია, რომელშიც მითითებული ფაილი იხსნება
-def read_file(filename):
-    with open(filename, "r", encoding="utf-8") as file:
-        return file.read()
-
-# Token-ების შედეგების ჩაწერის ფუნქცია ახალ ფაილში
-def write_output(filename, tokens):
-    with open(filename, "w", encoding="utf-8") as file:
-        file.write(str(tokens))
-
+# Node class represents nodes in the AST
 class Node:
-    def __init__(self,value, children=None):
-            self.value = value
-            self.children = children if children else []
+    def __init__(self, value, children=None):
+        self.value = value
+        self.children = children if children else []
 
     def __repr__(self):
         return f'Node({self.value}, {self.children})'
 
-def parse(tokens):
-    tokens = tokens.copy()
-    position = [0]
+    def pretty_print(self, indent=0, is_last=True, prefix=""):
+        """Recursively prints the AST with ASCII visual formatting."""
+        # Determine the connector based on whether this node is the last child
+        connector = "└── " if is_last else "├── "
+        # Print current node with appropriate prefix and connector
+        print(f"{prefix}{connector}{self.value}")
+        # Update prefix for children: add "|   " if this node is not the last, else "    "
+        new_prefix = prefix + ("    " if is_last else "│   ")
+        # Print children recursively
+        child_count = len(self.children)
+        for i, child in enumerate(self.children):
+            is_last_child = (i == child_count - 1)
+            if isinstance(child, Node):
+                child.pretty_print(indent + 1, is_last_child, new_prefix)
+            else:
+                print(f"{new_prefix}{'└── ' if is_last_child else '├── '}{child}")
 
-    def current_token():
-        if position[0] < len(tokens):
-            return tokens[position[0]]
-        else:
-            return None
 
-    def consume(expected_type=None, expected_value=None):
-        token = current_token()
-        if token is None:
+# Tokenizer class handles lexical analysis, splitting code into tokens.
+class Tokenizer:
+    TOKEN_PATTERNS = [
+        ('COMMENT',     r'//.*'),                      # Single-line comment
+        ('NUMBER',      r'\d+'),                       # Integer
+        ('KEYWORD',     r'\b(თუ|თუარა|აი|დაბეჭდე)\b'), # Reserved words
+        ('IDENTIFIER',  r'[_\u10A0-\u10FF][_\u10A0-\u10FF0-9]*'),  # Identifiers
+        ('COMPARISON',  r'==|!=|<=|>=|<|>'),          # Comparison operators
+        ('ASSIGNMENT',  r'='),                        # Assignment operator
+        ('OPERATOR',    r'[+\-*/]'),                  # Arithmetic operators
+        ('BRACKET',     r'[(){}]'),                   # Brackets
+        ('SEMICOLON',   r';'),                        # Semicolon
+        ('WHITESPACE',  r'\s+'),                      # Whitespace
+    ]
+
+    def __init__(self, code):
+        self.code = code
+        self.token_regex = '|'.join(f'(?P<{pair[0]}>{pair[1]})' for pair in self.TOKEN_PATTERNS)
+
+    def tokenize(self):
+        tokens = []
+        for match in re.finditer(self.token_regex, self.code):
+            kind = match.lastgroup
+            value = match.group(kind)
+            if kind not in ('WHITESPACE', 'COMMENT'):
+                tokens.append((kind, value))
+        return tokens
+
+# Parser class processes tokens into an abstract syntax tree (AST).
+class Parser:
+    def __init__(self, tokens):
+        self.tokens = tokens
+        self.position = 0
+
+    def current_token(self):
+        return self.tokens[self.position] if self.position < len(self.tokens) else None
+
+    def consume(self, expected_type=None, expected_value=None):
+        token = self.current_token()
+        if token is None or (expected_type and token[0] != expected_type) or (expected_value and token[1] != expected_value):
             return None
-        if expected_type and token[0] != expected_type:
-           return None
-        if expected_value and token[1] != expected_value:
-           return None
-        position[0] += 1
-        print(position[0])
+        self.position += 1
         return token
 
-    def parse_statement():
-        token = current_token()
+    def parse_statement(self):
+        token = self.current_token()
         if token is None:
             return None
 
-        #variable declaration
+        # Variable declaration
         if token[0] == 'KEYWORD' and token[1] == 'აი':
-            consume('KEYWORD','აი')
-            identifier = consume('IDENTIFIER')
-            consume('ASSIGNMENT','=')
-            expr = parse_expression()
-            consume('SEMICOLON',';')
-            return Node('Declaration',[identifier, expr])
+            self.consume('KEYWORD', 'აი')
+            identifier = self.consume('IDENTIFIER')
+            self.consume('ASSIGNMENT', '=')
+            expr = self.parse_expression()
+            self.consume('SEMICOLON', ';')
+            return Node('Declaration', [identifier, expr])
 
         # Assignment
         if token[0] == 'IDENTIFIER':
-            identifier = consume('IDENTIFIER')
-            consume('ASSIGNMENT','=')
-            expr = parse_expression()
-            consume('SEMICOLON',';')
-            return Node('Assignment',[identifier, expr])
+            identifier = self.consume('IDENTIFIER')
+            self.consume('ASSIGNMENT', '=')
+            expr = self.parse_expression()
+            self.consume('SEMICOLON', ';')
+            return Node('Assignment', [identifier, expr])
 
-        consume()
-        return Node('Unknown',[])
-            
-    def parse_factor():
-        token = current_token()
-        if token[0] in ('NUMBER','IDENTIFIER'):
-            consume()
+        self.consume()
+        return Node('Unknown', [])
+
+    def parse_factor(self):
+        token = self.current_token()
+        if token[0] in ('NUMBER', 'IDENTIFIER'):
+            self.consume()
             return Node(token[1])
         elif token[0] == "BRACKET" and token[1] == "(":
-                consume("BRACKET","(")
-                node = parse_expression()
-                consume("BRACKET",")")
-                return node
+            self.consume("BRACKET", "(")
+            node = self.parse_expression()
+            self.consume("BRACKET", ")")
+            return node
         else:
             return None
-        
-        
-    def parse_term():
-        node = parse_factor()
-        while True:
-            token = current_token()
-            if token and token[0] == "OPERATOR" and token[1] in ("*","/"):
-                consume()
-                right = parse_factor()
-                node = Node(token[1],[node,right])
-            else:
-                break
-        return node
-    
 
-    def parse_expression():
-        node = parse_term()
+    def parse_term(self):
+        node = self.parse_factor()
         while True:
-            token = current_token()
-            if token and token[0] == "OPERATOR" and token[1] in ("+","-"):
-                consume()
-                right = parse_term()
-                node = Node(token[1],[node,right])
+            token = self.current_token()
+            if token and token[0] == "OPERATOR" and token[1] in ("*", "/"):
+                self.consume()
+                right = self.parse_factor()
+                node = Node(token[1], [node, right])
             else:
                 break
         return node
 
-        
+    def parse_expression(self):
+        node = self.parse_term()
+        while True:
+            token = self.current_token()
+            if token and token[0] == "OPERATOR" and token[1] in ("+", "-"):
+                self.consume()
+                right = self.parse_term()
+                node = Node(token[1], [node, right])
+            else:
+                break
+        return node
 
-    print(tokens)
-    root = Node("Program")
-    while position[0] < len(tokens):
-        stmnt = parse_statement()
-        if stmnt:
-            root.children.append(stmnt)
-    return root
-        
+    def parse(self):
+        root = Node("Program")
+        while self.position < len(self.tokens):
+            stmnt = self.parse_statement()
+            if stmnt:
+                root.children.append(stmnt)
+        return root
 
-
-# მთავარი ფუნქცია
+# Main function to orchestrate reading, tokenizing, parsing, and output.
 def main():
     if len(sys.argv) < 2:
-        print("გთხოვთ მიუთითოთ ფაილის სახელი.")
+        print("Please provide a filename.")
         return
+
     input_filename = sys.argv[1]
     content = read_file(input_filename)
+    tokenizer = Tokenizer(content)
+    tokens = tokenizer.tokenize()
 
+    parser = Parser(tokens)
+    ast = parser.parse()
 
-    tokens = lexical_analyse(content)
-    ast = parse(tokens)
+    ast.pretty_print()
 
+# Utility function to read file content.
+def read_file(filename):
+    with open(filename, "r", encoding="utf-8") as file:
+        return file.read()
 
-    print(ast)
-    #output = ''
-    #output_filename = input_filename + ".შედეგი"
-    #write_output(output_filename, output)
-    #print(f"შედეგი ჩაწერილია ფაილში: {output_filename}")
-
-# პროგრამის საწყისი
 if __name__ == "__main__":
     main()
-
-
-
