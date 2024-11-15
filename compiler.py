@@ -27,19 +27,87 @@ class Node:
             else:
                 print(f"{new_prefix}{'└── ' if is_last_child else '├── '}{child}")
 
+class DeclarationNode(Node):
+    def __init__(self, identifier, expression):
+        super().__init__('Declaration', [identifier, expression])
 
-# Tokenizer class handles lexical analysis, splitting code into tokens.
+class AssignmentNode(Node):
+    def __init__(self, identifier, expression):
+        super().__init__('Assignment', [identifier, expression])
+
+class BinaryOperationNode(Node):
+    def __init__(self, operator, left, right):
+        super().__init__(operator, [left, right])
+
+class ValueNode(Node):
+    def __init__(self, value):
+        super().__init__(value)
+
+class FunctionNode(Node):
+    def __init__(self, name, parameters, body):
+        super().__init__('Function', [name] + parameters + [body])
+        self.name = name
+        self.parameters = parameters
+        self.body = body
+
+# Symbol Table to store variables and functions
+class SymbolTable:
+    def __init__(self):
+        self.symbols = {}
+
+    def declare(self, name, value):
+        """Declare a symbol with a given name and value. If it's already declared, raise an error."""
+        if not isinstance(name, str) or not name.isidentifier():
+            raise ValueError(f"Invalid symbol name: '{name}'. Name must be a valid identifier.")
+        
+        if name in self.symbols:
+            raise ValueError(f"Symbol '{name}' has already been declared. Use 'assign' for reassignment.")
+        
+        # Declare the new symbol
+        self.symbols[name] = value
+
+    def assign(self, name, value):
+        """Assign a value to an existing variable. The variable must already be declared."""
+        if name not in self.symbols:
+            raise KeyError(f"Symbol '{name}' has not been declared yet. Use 'declare' first.")
+        
+        # Assign the value to the variable
+        self.symbols[name] = value
+
+    def lookup(self, name):
+        """Look up a symbol by its name."""
+        if not isinstance(name, str):
+            raise ValueError(f"Invalid symbol name: '{name}'. Name must be a string.")
+
+        value = self.symbols.get(name, None)
+        if value is None:
+            raise KeyError(f"Symbol '{name}' not found.")
+        
+        return value
+
+    def __repr__(self):
+
+        for key, value in self.symbols.items():
+            print(f"{key}:\n")
+            if isinstance(value, Node):
+                value.pretty_print()
+            else:
+                print(f"  {value}\n")
+        
+        return ""
+
 class Tokenizer:
     TOKEN_PATTERNS = [
         ('COMMENT',     r'//.*'),                      # Single-line comment
         ('NUMBER',      r'\d+'),                       # Integer
-        ('KEYWORD',     r'\b(თუ|თუარა|აი|დაბეჭდე)\b'), # Reserved words
+        ('KEYWORD',     r'\b(თუ|თუარა|აი|დაბეჭდე|ფუნქცია)\b'), # Reserved words
         ('IDENTIFIER',  r'[_\u10A0-\u10FF][_\u10A0-\u10FF0-9]*'),  # Identifiers
         ('COMPARISON',  r'==|!=|<=|>=|<|>'),          # Comparison operators
         ('ASSIGNMENT',  r'='),                        # Assignment operator
         ('OPERATOR',    r'[+\-*/]'),                  # Arithmetic operators
         ('BRACKET',     r'[(){}]'),                   # Brackets
         ('SEMICOLON',   r';'),                        # Semicolon
+        ('COMMA',       r','),                        # Comma for function parameters
         ('WHITESPACE',  r'\s+'),                      # Whitespace
     ]
 
@@ -56,21 +124,28 @@ class Tokenizer:
                 tokens.append((kind, value))
         return tokens
 
-# Parser class processes tokens into an abstract syntax tree (AST).
+# Parser for syntactic analysis
 class Parser:
-    def __init__(self, tokens):
+    def __init__(self, tokens, symbol_table, debug=False):
         self.tokens = tokens
         self.position = 0
+        self.symbol_table = symbol_table
+        self.debug = debug
 
     def current_token(self):
         return self.tokens[self.position] if self.position < len(self.tokens) else None
 
     def consume(self, expected_type=None, expected_value=None):
         token = self.current_token()
-        if token is None or (expected_type and token[0] != expected_type) or (expected_value and token[1] != expected_value):
-            return None
+        if not token or (expected_type and token[0] != expected_type) or (expected_value and token[1] != expected_value):
+            self.error(f"Expected {expected_type} with value {expected_value} but got {token}")
+        if self.debug:
+            print(f"Consuming {token} at position {self.position}")
         self.position += 1
         return token
+
+    def error(self, message):
+        raise SyntaxError(f"Syntax error at position {self.position}: {message}")
 
     def parse_statement(self):
         token = self.current_token()
@@ -79,45 +154,80 @@ class Parser:
 
         # Variable declaration
         if token[0] == 'KEYWORD' and token[1] == 'აი':
-            self.consume('KEYWORD', 'აი')
-            identifier = self.consume('IDENTIFIER')
-            self.consume('ASSIGNMENT', '=')
-            expr = self.parse_expression()
-            self.consume('SEMICOLON', ';')
-            return Node('Declaration', [identifier, expr])
-
-        # Assignment
-        if token[0] == 'IDENTIFIER':
-            identifier = self.consume('IDENTIFIER')
-            self.consume('ASSIGNMENT', '=')
-            expr = self.parse_expression()
-            self.consume('SEMICOLON', ';')
-            return Node('Assignment', [identifier, expr])
-
+            return self.parse_declaration()
+        elif token[0] == 'IDENTIFIER':
+            return self.parse_assignment()
+        elif token[0] == 'KEYWORD' and token[1] == 'ფუნქცია':
+            return self.parse_function()
         self.consume()
         return Node('Unknown', [])
+
+    def parse_declaration(self):
+        self.consume('KEYWORD', 'აი')
+        identifier = self.consume('IDENTIFIER')
+        self.consume('ASSIGNMENT', '=')
+        expr = self.parse_expression()
+        self.consume('SEMICOLON', ';')
+        self.symbol_table.declare(identifier[1], expr)
+        return DeclarationNode(identifier, expr)
+
+    def parse_assignment(self):
+        identifier = self.consume('IDENTIFIER')
+        self.consume('ASSIGNMENT', '=')
+        expr = self.parse_expression()
+        self.consume('SEMICOLON', ';')
+        self.symbol_table.assign(identifier[1], expr)
+        return AssignmentNode(identifier, expr)
+
+    def parse_function(self):
+        self.consume('KEYWORD', 'ფუნქცია')
+        function_name = self.consume('IDENTIFIER')
+        self.consume('BRACKET', '(')
+        parameters = self.parse_parameters()
+        self.consume('BRACKET', ')')
+        self.consume('BRACKET', '{')
+        body = self.parse_block()
+        self.consume('BRACKET', '}')
+        self.symbol_table.declare(function_name[1], FunctionNode(function_name, parameters, body))
+        return FunctionNode(function_name, parameters, body)
+
+    def parse_parameters(self):
+        parameters = []
+        if self.current_token() and self.current_token()[0] == 'IDENTIFIER':
+            parameters.append(self.consume('IDENTIFIER'))
+            while self.current_token() and self.current_token()[0] == 'COMMA':
+                self.consume('COMMA')
+                parameters.append(self.consume('IDENTIFIER'))
+        return parameters
+
+    def parse_block(self):
+        block_node = Node("Block")
+        while self.current_token() and self.current_token()[1] != '}':
+            statement = self.parse_statement()
+            if statement:
+                block_node.children.append(statement)
+        return block_node
 
     def parse_factor(self):
         token = self.current_token()
         if token[0] in ('NUMBER', 'IDENTIFIER'):
             self.consume()
-            return Node(token[1])
+            return ValueNode(token[1])
         elif token[0] == "BRACKET" and token[1] == "(":
             self.consume("BRACKET", "(")
             node = self.parse_expression()
             self.consume("BRACKET", ")")
             return node
-        else:
-            return None
+        self.error("Expected factor")
 
     def parse_term(self):
         node = self.parse_factor()
         while True:
             token = self.current_token()
             if token and token[0] == "OPERATOR" and token[1] in ("*", "/"):
-                self.consume()
+                op = self.consume("OPERATOR")
                 right = self.parse_factor()
-                node = Node(token[1], [node, right])
+                node = BinaryOperationNode(op[1], node, right)
             else:
                 break
         return node
@@ -127,9 +237,9 @@ class Parser:
         while True:
             token = self.current_token()
             if token and token[0] == "OPERATOR" and token[1] in ("+", "-"):
-                self.consume()
+                op = self.consume("OPERATOR")
                 right = self.parse_term()
-                node = Node(token[1], [node, right])
+                node = BinaryOperationNode(op[1], node, right)
             else:
                 break
         return node
@@ -142,6 +252,10 @@ class Parser:
                 root.children.append(stmnt)
         return root
 
+def read_file(filename):
+    with open(filename, "r", encoding="utf-8") as file:
+        return file.read()
+
 # Main function to orchestrate reading, tokenizing, parsing, and output.
 def main():
     if len(sys.argv) < 2:
@@ -153,15 +267,12 @@ def main():
     tokenizer = Tokenizer(content)
     tokens = tokenizer.tokenize()
 
-    parser = Parser(tokens)
+    symbol_table = SymbolTable()
+    parser = Parser(tokens, symbol_table, debug=False)
     ast = parser.parse()
-
     ast.pretty_print()
-
-# Utility function to read file content.
-def read_file(filename):
-    with open(filename, "r", encoding="utf-8") as file:
-        return file.read()
+    print("\nSymbol Table:")
+    print(symbol_table)
 
 if __name__ == "__main__":
     main()
