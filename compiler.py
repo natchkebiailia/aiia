@@ -252,6 +252,61 @@ class Parser:
                 root.children.append(stmnt)
         return root
 
+class IntermediateCodeGenerator:
+    def __init__(self):
+        self.instructions = []  # List to store TAC instructions
+        self.temp_counter = 0   # Counter to generate temporary variables
+
+    def new_temp(self):
+        """Generate a new temporary variable."""
+        temp_name = f"t{self.temp_counter}"
+        self.temp_counter += 1
+        return temp_name
+
+    def generate(self, node):
+        """Generate TAC for a given AST node."""
+        method_name = f"gen_{type(node).__name__}"
+        generator = getattr(self, method_name, self.generic_gen)
+        return generator(node)
+
+    def generic_gen(self, node):
+        raise NotImplementedError(f"No generator for node type: {type(node).__name__}")
+
+    def gen_DeclarationNode(self, node):
+        identifier = node.children[0][1]  # Identifier name
+        expression = self.generate(node.children[1])  # Evaluate expression
+        self.instructions.append(f"{identifier} = {expression}")
+        return identifier
+
+    def gen_AssignmentNode(self, node):
+        identifier = node.children[0][1]  # Identifier name
+        expression = self.generate(node.children[1])  # Evaluate expression
+        self.instructions.append(f"{identifier} = {expression}")
+        return identifier
+
+    def gen_BinaryOperationNode(self, node):
+        left = self.generate(node.children[0])  # Generate TAC for left operand
+        right = self.generate(node.children[1])  # Generate TAC for right operand
+        temp = self.new_temp()  # Create a new temporary variable
+        self.instructions.append(f"{temp} = {left} {node.value} {right}")
+        return temp
+
+    def gen_ValueNode(self, node):
+        return node.value  # Leaf node (value or identifier)
+
+    def gen_FunctionNode(self, node):
+        function_name = node.name[1]
+        parameters = [param[1] for param in node.parameters]
+        self.instructions.append(f"func {function_name}({', '.join(parameters)}) {{")
+        self.generate(node.body)
+        self.instructions.append("}")
+        return function_name
+
+    def gen_Node(self, node):
+        for child in node.children:
+            self.generate(child)
+
+
 def read_file(filename):
     with open(filename, "r", encoding="utf-8") as file:
         return file.read()
@@ -273,6 +328,14 @@ def main():
     ast.pretty_print()
     print("\nSymbol Table:")
     print(symbol_table)
+
+    # Generate intermediate code
+    icg = IntermediateCodeGenerator()
+    icg.generate(ast)
+
+    print("\nThree-Address Code:")
+    for instruction in icg.instructions:
+        print(instruction)
 
 if __name__ == "__main__":
     main()
