@@ -254,8 +254,10 @@ class Parser:
 
 class IntermediateCodeGenerator:
     def __init__(self):
-        self.instructions = []  # List to store TAC instructions
-        self.temp_counter = 0   # Counter to generate temporary variables
+        self.instructions = []  # List to store generated C code
+        self.global_declarations = []  # Store global variable declarations
+        self.function_definitions = []  # Store function definitions
+        self.temp_counter = 0  # Counter to generate temporary variables
 
     def new_temp(self):
         """Generate a new temporary variable."""
@@ -264,7 +266,7 @@ class IntermediateCodeGenerator:
         return temp_name
 
     def generate(self, node):
-        """Generate TAC for a given AST node."""
+        """Generate C code for a given AST node."""
         method_name = f"gen_{type(node).__name__}"
         generator = getattr(self, method_name, self.generic_gen)
         return generator(node)
@@ -275,20 +277,22 @@ class IntermediateCodeGenerator:
     def gen_DeclarationNode(self, node):
         identifier = node.children[0][1]  # Identifier name
         expression = self.generate(node.children[1])  # Evaluate expression
-        self.instructions.append(f"{identifier} = {expression}")
+        declaration = f"int {identifier} = {expression};"
+        self.global_declarations.append(declaration)
         return identifier
 
     def gen_AssignmentNode(self, node):
         identifier = node.children[0][1]  # Identifier name
         expression = self.generate(node.children[1])  # Evaluate expression
-        self.instructions.append(f"{identifier} = {expression}")
+        assignment = f"{identifier} = {expression};"
+        self.instructions.append(assignment)
         return identifier
 
     def gen_BinaryOperationNode(self, node):
-        left = self.generate(node.children[0])  # Generate TAC for left operand
-        right = self.generate(node.children[1])  # Generate TAC for right operand
+        left = self.generate(node.children[0])  # Generate code for left operand
+        right = self.generate(node.children[1])  # Generate code for right operand
         temp = self.new_temp()  # Create a new temporary variable
-        self.instructions.append(f"{temp} = {left} {node.value} {right}")
+        self.instructions.append(f"int {temp} = {left} {node.value} {right};")
         return temp
 
     def gen_ValueNode(self, node):
@@ -296,15 +300,44 @@ class IntermediateCodeGenerator:
 
     def gen_FunctionNode(self, node):
         function_name = node.name[1]
-        parameters = [param[1] for param in node.parameters]
-        self.instructions.append(f"func {function_name}({', '.join(parameters)}) {{")
+        parameters = [f"int {param[1]}" for param in node.parameters]
+        function_header = f"void {function_name}({', '.join(parameters)})"
+        self.function_definitions.append(f"{function_header} {{")
         self.generate(node.body)
-        self.instructions.append("}")
-        return function_name
+        self.function_definitions.append("}")
 
     def gen_Node(self, node):
         for child in node.children:
             self.generate(child)
+
+    def generate_c_code(self):
+        """Generate the complete C program."""
+        c_code = []
+
+        # Include standard headers
+        c_code.append("#include <stdio.h>")
+        c_code.append("")
+
+        # Add global variable declarations
+        if self.global_declarations:
+            c_code.append("// Global Declarations")
+            c_code.extend(self.global_declarations)
+            c_code.append("")
+
+        # Add function definitions
+        if self.function_definitions:
+            c_code.append("// Function Definitions")
+            c_code.extend(self.function_definitions)
+            c_code.append("")
+
+        # Add main function
+        c_code.append("int main() {")
+        c_code.append("    // Main Instructions")
+        c_code.extend(f"    {instruction}" for instruction in self.instructions)
+        c_code.append("    return 0;")
+        c_code.append("}")
+
+        return "\n".join(c_code)
 
 
 def read_file(filename):
@@ -333,9 +366,15 @@ def main():
     icg = IntermediateCodeGenerator()
     icg.generate(ast)
 
-    print("\nThree-Address Code:")
-    for instruction in icg.instructions:
-        print(instruction)
+    print("\nGenerated C Code:")
+    c_code = icg.generate_c_code()
+    print(c_code)
+
+    # Optionally, write the generated C code to a file
+    output_filename = input_filename.replace(".აიია", ".c")  # Replace .txt with .c
+    with open(output_filename, "w", encoding="utf-8") as file:
+        file.write(c_code)
+    print(f"\nC code written to {output_filename}")
 
 if __name__ == "__main__":
     main()
